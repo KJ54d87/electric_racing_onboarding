@@ -1,5 +1,5 @@
 ## For onboarding
-I implemented the project in `electric_racing_onboarding/FreeRTOS/Demo/Posix_GCC`
+I implemented the project in `FreeRTOS/Demo/Posix_GCC`
 
 To run porject, go to the path above and run make.
 Then, run ./build/posix_demo
