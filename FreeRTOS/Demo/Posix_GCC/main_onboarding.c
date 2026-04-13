@@ -114,8 +114,8 @@
 /*
  * The tasks as described in the comments at the top of this file.
  */
-static void prvQueueReceiveTask( void * pvParameters );
-static void prvQueueSendTask( void * pvParameters );
+static void prvSendCanFrame( void * pvParameters );
+static void prvSimulateSensor( void * pvParameters );
 
 /*
  * The callback function executed when the software timer expires.
