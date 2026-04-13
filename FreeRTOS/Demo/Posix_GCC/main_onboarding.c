@@ -82,6 +82,8 @@
 
 #include <stdio.h>
 #include <pthread.h>
+#include <math.h>
+#include <string.h>
 
 /* Kernel includes. */
 #include "FreeRTOS.h"
@@ -109,13 +111,19 @@
 #define mainVALUE_SENT_FROM_TASK           ( 100UL )
 #define mainVALUE_SENT_FROM_TIMER          ( 200UL )
 
+/* For when reading is out of bounds
+*/
+#define mainSensorErrorCode  1000
+
 /*-----------------------------------------------------------*/
 
 /*
  * The tasks as described in the comments at the top of this file.
  */
 static void prvSendCanFrame( void * pvParameters );
-static void prvSimulateSensor( void * pvParameters );
+static void prvSimulateBatterySensor( void * pvParameters );
+static void prvQueueReceiveTask( void * pvParameters );
+static void prvQueueSendTask( void * pvParameters );
 
 /*
  * The callback function executed when the software timer expires.
@@ -133,7 +141,7 @@ static TimerHandle_t xTimer = NULL;
 /*-----------------------------------------------------------*/
 
 /*** SEE THE COMMENTS AT THE TOP OF THIS FILE ***/
-void main_blinky( void )
+void main_onboarding( void )
 {
     const TickType_t xTimerPeriod = mainTIMER_SEND_FREQUENCY_MS;
 
@@ -144,14 +152,22 @@ void main_blinky( void )
     {
         /* Start the two tasks as described in the comments at the top of this
          * file. */
-        xTaskCreate( prvSimulateSensor,             /* The function that implements the task. */
-                     "S",                            /* The text name assigned to the task - for debug only as it is not used by the kernel. */
-                     configMINIMAL_STACK_SIZE,        /* The size of the stack to allocate to the task. */
-                     NULL,                            /* The parameter passed to the task - not used in this simple case. */
-                     mainQUEUE_SEND_TASK_PRIORITY, /* The priority assigned to the task. */
+         xTaskCreate( prvSendCanFrame,             /* The function that implements the task. */
+                    "Can",                            /* The text name assigned to the task - for debug only as it is not used by the kernel. */
+                    configMINIMAL_STACK_SIZE,        /* The size of the stack to allocate to the task. */
+                    NULL,                            /* The parameter passed to the task - not used in this simple case. */
+                     mainQUEUE_RECEIVE_TASK_PRIORITY, /* The priority assigned to the task. */
                      NULL );                          /* The task handle is not required, so NULL is passed. */
+        
 
-        xTaskCreate( prvSendCanFrame, "Cn", configMINIMAL_STACK_SIZE, NULL, mainQUEUE_RECEIVE_TASK_PRIORITY, NULL );
+        xTaskCreate( prvSimulateBatterySensor, "BatSen", configMINIMAL_STACK_SIZE, NULL, mainQUEUE_SEND_TASK_PRIORITY, NULL );
+        
+        /* Create the software timer, but don't start it yet. */
+        xTimer = xTimerCreate( "Timer",                     /* The text name assigned to the software timer - for debug only as it is not used by the kernel. */
+                               xTimerPeriod,                /* The period of the software timer in ticks. */
+                               pdTRUE,                      /* xAutoReload is set to pdTRUE. */
+                               NULL,                        /* The timer's ID is not used. */
+                               prvQueueSendTimerCallback ); /* The function executed when the timer expires. */
 
         if( xTimer != NULL )
         {
@@ -175,16 +191,54 @@ void main_blinky( void )
 
 static void prvSendCanFrame( void * pvParameters )
 {
+    uint32_t ulReceivedValue;
+
     ( void ) pvParameters;
+    
+    for( ; ; )
+    {
+        xQueueReceive( xQueue, &ulReceivedValue, portMAX_DELAY );
+    }
 }
 
-static void prvSimulateSensor( void * pvParameters )
+static void prvSimulateBatterySensor( void * pvParameters )
 {
+    TickType_t xNextWakeTime;
+    const TickType_t xBlockTime = mainTASK_SEND_FREQUENCY_MS;
+    const uint32_t ulValueToSend = mainVALUE_SENT_FROM_TASK;
+
     ( void ) pvParameters;
 
-    // Generate signal
+    xNextWakeTime = xTaskGetTickCount();
+    
+    //array to hold a 3-sample moving average sample
+    
+    uint32_t samples[3] = {};
 
-    //Filter for outliers
+    for( ; ; )
+    {
+        vTaskDelayUntil( &xNextWakeTime, xBlockTime );
+        // Generate signal
+        uint32_t currentBatteryLevel = (int) lround(sin((double) xNextWakeTime / 200 * (3.14/12)) * 100.0);
+        if (currentBatteryLevel < 0 )
+        {
+            currentBatteryLevel = 0;
+        }
+        //Update samples
+        samples[0] = samples[1];
+        samples[1] = samples[2];
+        samples[2] = currentBatteryLevel;
+
+        uint32_t averageBatteryLevel = (samples[0] + samples[1] + samples[2])/3;
+
+        //Filter for outliers
+        if (averageBatteryLevel < 0 | averageBatteryLevel > 100)
+        {
+            averageBatteryLevel = mainSensorErrorCode; 
+        } 
+
+        xQueueSend( xQueue, &averageBatteryLevel, 0U);
+    }
 }
 
 static void prvQueueSendTask( void * pvParameters )

@@ -63,7 +63,9 @@ SOURCE_FILES          += ${FREERTOS_DIR}/Demo/Common/Minimal/TimerDemo.c
 
 
 CFLAGS                :=    -ggdb3
+CFLAGS                +=    -lm
 LDFLAGS               :=    -ggdb3 -pthread
+LDFLAGS               +=    -lm
 CPPFLAGS              :=    $(INCLUDE_DIRS) -DBUILD_DIR=\"$(BUILD_DIR_ABS)\"
 CPPFLAGS              +=    -D_WINDOWS_
 
